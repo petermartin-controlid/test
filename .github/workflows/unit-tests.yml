@@ -1,0 +1,54 @@
+name: Badge Playground
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  badge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Generate badge with random value
+        run: |
+          mkdir -p badges
+          VALUE=$((RANDOM % 100))
+          python3 scripts/generate_badge.py "coverage" "${VALUE}%" "green" "badges/coverage.svg"
+
+      - name: Publish badge to gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PAGES_DIR="$(mktemp -d)"
+          if git fetch origin gh-pages; then
+            git worktree add -B gh-pages "$PAGES_DIR" origin/gh-pages
+          else
+            git worktree add --detach "$PAGES_DIR"
+            git -C "$PAGES_DIR" switch --orphan gh-pages
+            git -C "$PAGES_DIR" rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p "$PAGES_DIR/badges"
+          cp badges/*.svg "$PAGES_DIR/badges/"
+
+          cd "$PAGES_DIR"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No badge changes to publish."
+          else
+            git commit -m "Update badge (run ${{ github.run_id }})"
+            git push origin HEAD:gh-pages
+          fi
+
+          cd "$GITHUB_WORKSPACE"
+          git worktree remove "$PAGES_DIR" --force || true
